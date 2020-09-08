@@ -455,6 +455,13 @@ class InvalidSubnetRangeError(EC2ClientError):
         )
 
 
+class InvalidIPv6SubnetRangeError(EC2ClientError):
+    def __init__(self, ipv6_cidr_block):
+        super(InvalidSubnetRangeError, self).__init__(
+            "InvalidSubnet.Range", "The IPv6 CIDR '{}' is invalid.".format(ipv6_cidr_block)
+        )
+
+
 class InvalidCIDRBlockParameterError(EC2ClientError):
     def __init__(self, cidr_block):
         super(InvalidCIDRBlockParameterError, self).__init__(
@@ -462,6 +469,14 @@ class InvalidCIDRBlockParameterError(EC2ClientError):
             "Value ({}) for parameter cidrBlock is invalid. This is not a valid CIDR block.".format(
                 cidr_block
             ),
+        )
+
+
+class InvalidIpv6CIDRBlockParameterError(EC2ClientError):
+    def __init__(self, ipv6_cidr_block):
+        super(InvalidIpv6CIDRBlockParameterError, self).__init__(
+            "InvalidParameterValue",
+            "invalid value for parameter ipv6-cidr-block: {}".format(ipv6_cidr_block)
         )
 
 

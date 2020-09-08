@@ -2836,20 +2836,19 @@ class VPC(TaggedEC2Resource, CloudFormationModel):
             or network_address in ipaddress.ip_network("10.1.0.0/16")
         ):
             self.classic_link_enabled = "true"
-
-        return self.classic_link_enabled
+        return "true"
 
     def disable_vpc_classic_link(self):
         self.classic_link_enabled = "false"
-        return self.classic_link_enabled
+        return "true"
 
     def enable_vpc_classic_link_dns_support(self):
         self.classic_link_dns_supported = "true"
-        return self.classic_link_dns_supported
+        return "true"
 
     def disable_vpc_classic_link_dns_support(self):
         self.classic_link_dns_supported = "false"
-        return self.classic_link_dns_supported
+        return "true"
 
     def disassociate_vpc_cidr_block(self, association_id):
         if self.cidr_block == self.cidr_block_association_set.get(
@@ -3234,6 +3233,7 @@ class Subnet(TaggedEC2Resource, CloudFormationModel):
         map_public_ip_on_launch,
         owner_id=OWNER_ID,
         assign_ipv6_address_on_creation=False,
+        ipv6_cidr_block=None,
     ):
         self.ec2_backend = ec2_backend
         self.id = subnet_id
@@ -3248,7 +3248,9 @@ class Subnet(TaggedEC2Resource, CloudFormationModel):
         self.map_public_ip_on_launch = map_public_ip_on_launch
         self.owner_id = owner_id
         self.assign_ipv6_address_on_creation = assign_ipv6_address_on_creation
-        self.ipv6_cidr_block_associations = []
+        self.ipv6_cidr_block_association_set = []
+        if ipv6_cidr_block:
+            self.associate_subnet_cidr_block(ipv6_cidr_block)
 
         # Theory is we assign ip's as we go (as 16,777,214 usable IPs in a /8)
         self._subnet_ip_generator = self.cidr.hosts()
@@ -3389,6 +3391,29 @@ class Subnet(TaggedEC2Resource, CloudFormationModel):
         except KeyError:
             pass  # Unknown IP
 
+    def associate_subnet_cidr_block(
+        self, ipv6_cidr_block
+    ):
+        max_associations = 1
+        if len(self.ipv6_cidr_block_association_set) >= max_associations:
+            raise CidrLimitExceeded(self.id, max_associations)
+
+        association_id = random_subnet_cidr_association_id()
+        association_set = {
+            "association_id": association_id,
+            "ipv6_cidr_block_state": {"state": "associated", "StatusMessage": ""},
+            "ipv6_cidr_block": ipv6_cidr_block,
+        }
+        self.ipv6_cidr_block_association_set[association_id] = association_set
+        return association_set
+
+    def disassociate_subnet_cidr_block(self, association_id):
+        response = self.ipv6_cidr_block_association_set.pop(association_id, {})
+        if response:
+            response["subnet_id"] = self.id
+            response["ipv6_cidr_block_state"]["state"] = "disassociating"
+        return response
+
 
 class SubnetBackend(object):
     def __init__(self):
@@ -3406,6 +3431,7 @@ class SubnetBackend(object):
         self,
         vpc_id,
         cidr_block,
+        ipv6_cidr_block=None,
         availability_zone=None,
         availability_zone_id=None,
         context=None,
@@ -3432,6 +3458,18 @@ class SubnetBackend(object):
         for subnet in self.get_all_subnets(filters={"vpc-id": vpc_id}):
             if subnet.cidr.overlaps(subnet_cidr_block):
                 raise InvalidSubnetConflictError(cidr_block)
+
+        if ipv6_cidr_block:
+            # Validate VPC has an IPv6 CIDR block.
+            if not vpc.ipv6_cidr_block:
+                raise InvalidIPv6SubnetRangeError(ipv6_cidr_block)
+            vpc_ipv6_cidr_block = ipaddress.IPv6Network(six.text_type(vpc.ipv6_cidr_block), strict=False)
+            try:
+                subnet_ipv6_cidr_block = ipaddress.IPv6Network(six.text_type(ipv6_cidr_block), strict=False)
+            except ValueError:
+                raise InvalidIpv6CIDRBlockParameterError(ipv6_cidr_block)
+            if subnet_ipv6_cidr_block.prefixlen != 64 or not subnet_ipv6_cidr_block.subnet_of(vpc_ipv6_cidr_block):
+                raise InvalidIpv6CIDRBlockParameterError(ipv6_cidr_block)
 
         # if this is the first subnet for an availability zone,
         # consider it the default
@@ -3472,6 +3510,7 @@ class SubnetBackend(object):
             subnet_id,
             vpc_id,
             cidr_block,
+            ipv6_cidr_block,
             availability_zone_data,
             default_for_az,
             map_public_ip_on_launch,
