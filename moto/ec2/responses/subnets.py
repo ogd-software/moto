@@ -46,6 +46,14 @@ class Subnets(BaseResponse):
                 )
                 return MODIFY_SUBNET_ATTRIBUTE_RESPONSE
 
+    def associate_subnet_cidr_block(self):
+        subnet_id = self._get_param("SubnetId")
+        ipv6_cidr_block = self._get_param("Ipv6CidrBlock")
+        ipv6_cidr_block_association = self.ec2_backend.associate_subnet_cidr_block(subnet_id, ipv6_cidr_block)
+        template = self.response_template(ASSOCIATE_SUBNET_CIDR_BLOCK_RESPONSE)
+        return template.render(subnet_id=subnet_id, ipv6_cidr_block_association=ipv6_cidr_block_association)
+
+
 
 CREATE_SUBNET_RESPONSE = """
 <CreateSubnetResponse xmlns="http://ec2.amazonaws.com/doc/2013-10-15/">
@@ -62,7 +70,7 @@ CREATE_SUBNET_RESPONSE = """
     <mapPublicIpOnLaunch>{{ subnet.map_public_ip_on_launch }}</mapPublicIpOnLaunch>
     <ownerId>{{ subnet.owner_id }}</ownerId>
     <assignIpv6AddressOnCreation>{{ subnet.assign_ipv6_address_on_creation }}</assignIpv6AddressOnCreation>
-    <ipv6CidrBlockAssociationSet>{{ subnet.ipv6_cidr_block_associations }}</ipv6CidrBlockAssociationSet>
+    <ipv6CidrBlockAssociationSet>{{ subnet.ipv6_cidr_block_association_set }}</ipv6CidrBlockAssociationSet>
     <subnetArn>arn:aws:ec2:{{ subnet._availability_zone.name[0:-1] }}:{{ subnet.owner_id }}:subnet/{{ subnet.id }}</subnetArn>
   </subnet>
 </CreateSubnetResponse>"""
@@ -90,7 +98,17 @@ DESCRIBE_SUBNETS_RESPONSE = """
         <mapPublicIpOnLaunch>{{ subnet.map_public_ip_on_launch }}</mapPublicIpOnLaunch>
         <ownerId>{{ subnet.owner_id }}</ownerId>
         <assignIpv6AddressOnCreation>{{ subnet.assign_ipv6_address_on_creation }}</assignIpv6AddressOnCreation>
-        <ipv6CidrBlockAssociationSet>{{ subnet.ipv6_cidr_block_associations }}</ipv6CidrBlockAssociationSet>
+        <ipv6CidrBlockAssociationSet>
+        {%- for ipv6_cidr_block_association in subnet.ipv6_cidr_block_association_set.values() %}
+          <item>
+            <ipv6CidrBlock>{{ ipv6_cidr_block_association.ipv6_cidr_block }}</ipv6CidrBlock>
+            <associationId>{{ ipv6_cidr_block_association.association_id }}</associationId>
+            <ipv6CidrBlockState>
+              <state>{{ ipv6_cidr_block_association.ipv6_cidr_block_state.state }}</state>
+            </ipv6CidrBlockState>
+          </item>
+        {%- endfor %}
+        </ipv6CidrBlockAssociationSet>
         <subnetArn>arn:aws:ec2:{{ subnet._availability_zone.name[0:-1] }}:{{ subnet.owner_id }}:subnet/{{ subnet.id }}</subnetArn>
         {% if subnet.get_tags() %}
           <tagSet>
@@ -114,3 +132,16 @@ MODIFY_SUBNET_ATTRIBUTE_RESPONSE = """
   <requestId>7a62c49f-347e-4fc4-9331-6e8eEXAMPLE</requestId>
   <return>true</return>
 </ModifySubnetAttributeResponse>"""
+
+ASSOCIATE_SUBNET_CIDR_BLOCK_RESPONSE = """
+<AssociateSubnetCidrBlock xmlns="http://ec2.amazonaws.com/doc/2016-11-15/">
+   <requestId>59dbff89-35bd-4eac-99ed-be587EXAMPLE</requestId>
+   <subnetId>{{ subnet_id }}</subnetId>
+   <ipv6CidrBlockAssociation>
+     <ipv6CidrBlock>{{ ipv6_cidr_block_association.ipv6_cidr_block }}</ipv6CidrBlock>
+     <ipv6CidrBlockState>
+       <state>{{ ipv6_cidr_block_association.ipv6_cidr_block_state.state }}</state>
+     </ipv6CidrBlockState>
+     <associationId>{{ ipv6_cidr_block_association.association_id }}</associationId>
+   </ipv6CidrBlockAssociation>
+</AssociateSubnetCidrBlock>"""
