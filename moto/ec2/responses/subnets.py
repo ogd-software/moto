@@ -11,12 +11,18 @@ class Subnets(BaseResponse):
         cidr_block = self._get_param("CidrBlock")
         availability_zone = self._get_param("AvailabilityZone")
         availability_zone_id = self._get_param("AvailabilityZoneId")
+        ipv6_cidr_block = self._get_param("Ipv6CidrBlock")
         if not availability_zone and not availability_zone_id:
             availability_zone = random.choice(
                 self.ec2_backend.describe_availability_zones()
             ).name
         subnet = self.ec2_backend.create_subnet(
-            vpc_id, cidr_block, availability_zone, availability_zone_id, context=self
+            vpc_id,
+            cidr_block,
+            availability_zone=availability_zone,
+            availability_zone_id=availability_zone_id,
+            context=self,
+            ipv6_cidr_block=ipv6_cidr_block
         )
         template = self.response_template(CREATE_SUBNET_RESPONSE)
         return template.render(subnet=subnet)
@@ -53,6 +59,16 @@ class Subnets(BaseResponse):
         template = self.response_template(ASSOCIATE_SUBNET_CIDR_BLOCK_RESPONSE)
         return template.render(subnet_id=subnet_id, ipv6_cidr_block_association=ipv6_cidr_block_association)
 
+    def disassociate_subnet_cidr_block(self):
+        association_id = self._get_param("AssociationId")
+        value = self.ec2_backend.disassociate_subnet_cidr_block(association_id)
+        template = self.response_template(DISASSOCIATE_SUBNET_CIDR_BLOCK_RESPONSE)
+        return template.render(
+            subnet_id=value['subnet_id'],
+            ipv6_cidr_block=value['ipv6_cidr_block'],
+            ipv6_cidr_block_state=value['ipv6_cidr_block_state'],
+            association_id=value['association_id'],
+        )
 
 
 CREATE_SUBNET_RESPONSE = """
@@ -70,7 +86,17 @@ CREATE_SUBNET_RESPONSE = """
     <mapPublicIpOnLaunch>{{ subnet.map_public_ip_on_launch }}</mapPublicIpOnLaunch>
     <ownerId>{{ subnet.owner_id }}</ownerId>
     <assignIpv6AddressOnCreation>{{ subnet.assign_ipv6_address_on_creation }}</assignIpv6AddressOnCreation>
-    <ipv6CidrBlockAssociationSet>{{ subnet.ipv6_cidr_block_association_set }}</ipv6CidrBlockAssociationSet>
+    <ipv6CidrBlockAssociationSet>
+    {%- for ipv6_cidr_block_association in subnet.ipv6_cidr_block_association_set.values() %}
+      <item>
+        <ipv6CidrBlock>{{ ipv6_cidr_block_association.ipv6_cidr_block }}</ipv6CidrBlock>
+        <associationId>{{ ipv6_cidr_block_association.association_id }}</associationId>
+        <ipv6CidrBlockState>
+          <state>{{ ipv6_cidr_block_association.ipv6_cidr_block_state.state }}</state>
+        </ipv6CidrBlockState>
+      </item>
+    {%- endfor %}
+    </ipv6CidrBlockAssociationSet>
     <subnetArn>arn:aws:ec2:{{ subnet._availability_zone.name[0:-1] }}:{{ subnet.owner_id }}:subnet/{{ subnet.id }}</subnetArn>
   </subnet>
 </CreateSubnetResponse>"""
@@ -145,3 +171,15 @@ ASSOCIATE_SUBNET_CIDR_BLOCK_RESPONSE = """
      <associationId>{{ ipv6_cidr_block_association.association_id }}</associationId>
    </ipv6CidrBlockAssociation>
 </AssociateSubnetCidrBlock>"""
+
+DISASSOCIATE_SUBNET_CIDR_BLOCK_RESPONSE = """
+<DisassociateSubnetCidrBlockResponse xmlns="http://ec2.amazonaws.com/doc/2016-11-15/">
+   <subnetId>{{ subnet_id }}</subnetId>
+    <ipv6CidrBlockAssociation>
+        <ipv6CidrBlock>{{ ipv6_cidr_block }}</ipv6CidrBlock>
+        <ipv6CidrBlockState>
+            <state>{{ ipv6_cidr_block_state.state }}</state>
+        </ipv6CidrBlockState>
+        <associationId>{{ association_id }}</associationId>
+    </ipv6CidrBlockAssociation>
+</DisassociateSubnetCidrBlockResponse>"""
