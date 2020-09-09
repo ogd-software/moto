@@ -69,6 +69,8 @@ from .exceptions import (
     InvalidSubnetConflictError,
     InvalidSubnetIdError,
     InvalidSubnetRangeError,
+    InvalidIpv6SubnetRangeError,
+    InvalidIpv6CIDRBlockParameterError,
     InvalidVolumeIdError,
     VolumeInUseError,
     InvalidVolumeAttachmentError,
@@ -123,6 +125,7 @@ from .utils import (
     random_spot_request_id,
     random_subnet_id,
     random_subnet_association_id,
+    random_subnet_cidr_association_id,
     random_volume_id,
     random_vpc_id,
     random_vpc_cidr_association_id,
@@ -3248,7 +3251,7 @@ class Subnet(TaggedEC2Resource, CloudFormationModel):
         self.map_public_ip_on_launch = map_public_ip_on_launch
         self.owner_id = owner_id
         self.assign_ipv6_address_on_creation = assign_ipv6_address_on_creation
-        self.ipv6_cidr_block_association_set = []
+        self.ipv6_cidr_block_association_set = {}
         if ipv6_cidr_block:
             self.associate_subnet_cidr_block(ipv6_cidr_block)
 
@@ -3431,10 +3434,10 @@ class SubnetBackend(object):
         self,
         vpc_id,
         cidr_block,
-        ipv6_cidr_block=None,
         availability_zone=None,
         availability_zone_id=None,
         context=None,
+        ipv6_cidr_block=None,
     ):
         subnet_id = random_subnet_id()
         vpc = self.get_vpc(
@@ -3461,9 +3464,10 @@ class SubnetBackend(object):
 
         if ipv6_cidr_block:
             # Validate VPC has an IPv6 CIDR block.
-            if not vpc.ipv6_cidr_block:
-                raise InvalidIPv6SubnetRangeError(ipv6_cidr_block)
-            vpc_ipv6_cidr_block = ipaddress.IPv6Network(six.text_type(vpc.ipv6_cidr_block), strict=False)
+            vpc_ipv6_cidr_association_set = vpc.get_cidr_block_association_set(ipv6=True)
+            if not vpc_ipv6_cidr_association_set:
+                raise InvalidIpv6SubnetRangeError(ipv6_cidr_block)
+            vpc_ipv6_cidr_block = ipaddress.IPv6Network(six.text_type(vpc_ipv6_cidr_association_set[0]['cidr_block']), strict=False)
             try:
                 subnet_ipv6_cidr_block = ipaddress.IPv6Network(six.text_type(ipv6_cidr_block), strict=False)
             except ValueError:
@@ -3510,12 +3514,12 @@ class SubnetBackend(object):
             subnet_id,
             vpc_id,
             cidr_block,
-            ipv6_cidr_block,
             availability_zone_data,
             default_for_az,
             map_public_ip_on_launch,
             owner_id=context.get_current_user() if context else OWNER_ID,
             assign_ipv6_address_on_creation=False,
+            ipv6_cidr_block=ipv6_cidr_block,
         )
 
         # AWS associates a new subnet with the default Network ACL
@@ -3548,6 +3552,20 @@ class SubnetBackend(object):
             setattr(subnet, attr_name, attr_value)
         else:
             raise InvalidParameterValueError(attr_name)
+
+    def associate_subnet_cidr_block(
+        self, subnet_id, ipv6_cidr_block,
+    ):
+        subnet = self.get_subnet(subnet_id)
+        return subnet.associate_subnet_cidr_block(ipv6_cidr_block)
+
+    def disassociate_subnet_cidr_block(self, association_id):
+        for subnet in self.subnets.values():
+            response = subnet.disassociate_subnet_cidr_block(association_id)
+            if response:
+                return response
+        else:
+            raise InvalidSubnetCidrBlockAssociationIdError(association_id)
 
 
 class SubnetRouteTableAssociation(CloudFormationModel):
