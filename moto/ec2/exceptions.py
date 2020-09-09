@@ -71,6 +71,14 @@ class InvalidSubnetIdError(EC2ClientError):
         )
 
 
+class InvalidNatGatewayIdError(EC2ClientError):
+    def __init__(self, nat_gateway_id):
+        super(InvalidNatGatewayIdError, self).__init__(
+            "InvalidNatGatewayID.NotFound",
+            "The NAT gateway ID '{}' does not exist".format(nat_gateway_id),
+        )
+
+
 class InvalidNetworkAclIdError(EC2ClientError):
     def __init__(self, network_acl_id):
         super(InvalidNetworkAclIdError, self).__init__(
