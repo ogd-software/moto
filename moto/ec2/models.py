@@ -53,6 +53,7 @@ from .exceptions import (
     InvalidKeyPairFormatError,
     InvalidKeyPairNameError,
     InvalidLaunchTemplateNameError,
+    InvalidNatGatewayIdError,
     InvalidNetworkAclIdError,
     InvalidNetworkAttachmentIdError,
     InvalidNetworkInterfaceIdError,
@@ -3342,6 +3343,12 @@ class Subnet(TaggedEC2Resource, CloudFormationModel):
             return self.availability_zone
         elif filter_name in ("defaultForAz", "default-for-az"):
             return self.default_for_az
+        elif filter_name == 'ipv6-cidr-block-association.ipv6-cidr-block':
+            return [item['ipv6_cidr_block'] for item in self.ipv6_cidr_block_association_set.values()]
+        elif filter_name == 'ipv6-cidr-block-association.association-id':
+            return self.ipv6_cidr_block_association_set.keys()
+        elif filter_name == 'ipv6-cidr-block-association.state':
+            return [item['ipv6_cidr_block_state']['state'] for item in self.ipv6_cidr_block_association_set.values()]
         else:
             return super(Subnet, self).get_filter_value(filter_name, "DescribeSubnets")
 
@@ -3560,12 +3567,11 @@ class SubnetBackend(object):
         return subnet.associate_subnet_cidr_block(ipv6_cidr_block)
 
     def disassociate_subnet_cidr_block(self, association_id):
-        for subnet in self.subnets.values():
-            response = subnet.disassociate_subnet_cidr_block(association_id)
-            if response:
-                return response
-        else:
-            raise InvalidSubnetCidrBlockAssociationIdError(association_id)
+        for subnets in self.subnets.values():
+            for subnet in subnets.values():
+                if association_id in subnet.ipv6_cidr_block_association_set:
+                    return subnet.disassociate_subnet_cidr_block(association_id)
+        raise InvalidSubnetCidrBlockAssociationIdError(association_id)
 
 
 class SubnetRouteTableAssociation(CloudFormationModel):
@@ -5412,8 +5418,14 @@ class NatGatewayBackend(object):
         self.nat_gateways = {}
         super(NatGatewayBackend, self).__init__()
 
-    def get_all_nat_gateways(self, filters):
-        nat_gateways = self.nat_gateways.values()
+    def get_all_nat_gateways(self, nat_gateway_ids=None, filters=None):
+        # Extract a list of all nat_gatewaysGEBLEVEN
+        nat_gateways = list(self.nat_gateways.values())
+        if nat_gateway_ids:
+            nat_gateways = [ngw for ngw in nat_gateways if ngw.id in nat_gateway_ids]
+            if len(nat_gateway_ids) > len(nat_gateways):
+                unknown_ids = set(nat_gateway_ids) - set(nat_gateways)
+                raise InvalidNatGatewayIdError(unknown_ids)
 
         if filters is not None:
             if filters.get("nat-gateway-id") is not None:
