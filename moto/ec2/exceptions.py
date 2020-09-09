@@ -289,6 +289,16 @@ class InvalidVpcCidrBlockAssociationIdError(EC2ClientError):
         )
 
 
+class InvalidSubnetCidrBlockAssociationIdError(EC2ClientError):
+    def __init__(self, association_id):
+        super(InvalidSubnetCidrBlockAssociationIdError, self).__init__(
+            "InvalidSubnetCidrBlockAssociationID.NotFound",
+            "The subnet CIDR block with association ID '{}' does not exist".format(
+                association_id
+            ),
+        )
+
+
 class InvalidVPCPeeringConnectionIdError(EC2ClientError):
     def __init__(self, vpc_peering_connection_id):
         super(InvalidVPCPeeringConnectionIdError, self).__init__(
@@ -455,9 +465,9 @@ class InvalidSubnetRangeError(EC2ClientError):
         )
 
 
-class InvalidIPv6SubnetRangeError(EC2ClientError):
+class InvalidIpv6SubnetRangeError(EC2ClientError):
     def __init__(self, ipv6_cidr_block):
-        super(InvalidSubnetRangeError, self).__init__(
+        super(InvalidIpv6SubnetRangeError, self).__init__(
             "InvalidSubnet.Range", "The IPv6 CIDR '{}' is invalid.".format(ipv6_cidr_block)
         )
 
